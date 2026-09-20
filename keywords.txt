@@ -1,0 +1,93 @@
+#######################################
+# Syntax Highlighting for MicroDB
+#######################################
+
+#######################################
+# Datatypes and Classes (KEYWORD1)
+#######################################
+MicroDB	KEYWORD1
+Table	KEYWORD1
+MicroDB_Index	KEYWORD1
+TableHeader	KEYWORD1
+SlotHeader	KEYWORD1
+IndexHeader	KEYWORD1
+IndexEntry	KEYWORD1
+RecordStatus	KEYWORD1
+DBResult	KEYWORD1
+QueryOp	KEYWORD1
+FieldType	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+begin	KEYWORD2
+openTable	KEYWORD2
+openIndex	KEYWORD2
+innerJoin	KEYWORD2
+dropDatabase	KEYWORD2
+insert	KEYWORD2
+insertIf	KEYWORD2
+updateIf	KEYWORD2
+insertWithFK	KEYWORD2
+insertWithFKAndCheck	KEYWORD2
+insertUnique	KEYWORD2
+insertUniqueString	KEYWORD2
+upsertUnique	KEYWORD2
+upsertUniqueString	KEYWORD2
+removeRestrict	KEYWORD2
+removeCascade	KEYWORD2
+vacuum	KEYWORD2
+getById	KEYWORD2
+getBySlot	KEYWORD2
+findFirst	KEYWORD2
+update	KEYWORD2
+remove	KEYWORD2
+forEach	KEYWORD2
+where	KEYWORD2
+countWhere	KEYWORD2
+truncate	KEYWORD2
+count	KEYWORD2
+deletedCount	KEYWORD2
+totalSlots	KEYWORD2
+getName	KEYWORD2
+isTableOpen	KEYWORD2
+hashString	KEYWORD2
+printMemoryDiagnostics	KEYWORD2
+getFreeRam	KEYWORD2
+
+#######################################
+# Constants and Literals (LITERAL1)
+#######################################
+RECORD_DELETED	LITERAL1
+RECORD_ACTIVE	LITERAL1
+DB_SUCCESS	LITERAL1
+DB_ERROR_FILE_NOT_FOUND	LITERAL1
+DB_ERROR_SD_INIT	LITERAL1
+DB_ERROR_CORRUPTED	LITERAL1
+DB_ERROR_OUT_OF_MEMORY	LITERAL1
+DB_ERROR_RECORD_NOT_FOUND	LITERAL1
+DB_ERROR_INDEX_FULL	LITERAL1
+DB_ERROR_KEY_EXISTS	LITERAL1
+DB_ERROR_INVALID_PARAM	LITERAL1
+DB_ERROR_IO	LITERAL1
+OP_EQ	LITERAL1
+OP_NE	LITERAL1
+OP_GT	LITERAL1
+OP_GTE	LITERAL1
+OP_LT	LITERAL1
+OP_LTE	LITERAL1
+TYPE_BOOL	LITERAL1
+TYPE_INT8	LITERAL1
+TYPE_UINT8	LITERAL1
+TYPE_INT16	LITERAL1
+TYPE_UINT16	LITERAL1
+TYPE_INT32	LITERAL1
+TYPE_UINT32	LITERAL1
+TYPE_FLOAT	LITERAL1
+TYPE_DOUBLE	LITERAL1
+TYPE_STRING	LITERAL1
+TYPE_BLOB	LITERAL1
+MICRODB_PAGE_SIZE	LITERAL1
+MICRODB_NULL_OFFSET	LITERAL1
+MICRODB_FILE_RW	LITERAL1
+MICRODB_ENABLE_DIAGNOSTICS	LITERAL1
