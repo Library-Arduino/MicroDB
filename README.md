@@ -15,7 +15,7 @@ A diferencia de los archivos CSV o JSON de texto plano que sufren de lecturas le
 
 * ⚡ **Operaciones CRUD en $O(1)$:** Lectura, inserción, actualización *in-place* y borrado sin tener que recorrer todo el archivo.
 * 🛡️ **Persistencia Segura ante Reinicios:** Recuperación instantánea del estado de la base de datos tras cortes de energía o reinicios del microcontrolador.
-* 📋 **Auto-Descubrimiento de Columnas (Schema Reflection):** Genera automáticamente metadatos en formato `.jsn` (JSON FAT 8.3) y `.sch` (binario) en la SD para que cualquier software externo (Python, C#, Electron, Web) lea e interprete todas las columnas automáticamente sin configuración manual.
+* 📋 **Auto-Descubrimiento de Columnas (Schema Reflection):** Genera automáticamente metadatos en formato `.jsn` (JSON universal FAT 8.3) en la SD para que el software de escritorio **MicroDB Studio** (o aplicaciones en Python, C#, Electron, Web) lea, descubra e interprete todas las columnas y relaciones automáticamente sin configuración manual.
 * 🚫 **Valores Únicos No Repetidos (UNIQUE Constraints):** Evita duplicados en campos numéricos (`insertUnique`) o cadenas (`insertUniqueString` para emails, DNI/cédula, seriales o SKUs).
 * 🔄 **Operaciones UPSERT:** Inserta automáticamente un registro si es nuevo, o lo actualiza *in-place* si ya existe (`upsertUnique`, `upsertUniqueString`).
 * 🧹 **Mantenimiento y Compactación (VACUUM):** Desfragmenta el archivo en la SD y recupera el 100% del espacio en disco tras borrados masivos.
@@ -66,14 +66,14 @@ Table<Order> ordersTable = db.openTable<Order>("orders");
 
 ### 4. Definición de Esquema y Metadatos (`saveSchema`)
 * Define los nombres de columnas, restricciones UNIQUE y referencias de Foreign Key.
-* Llama a `.saveSchema()` para generar los archivos `.jsn` y `.sch` en la SD.
+* Llama a `.saveSchema()` para generar el archivo de catálogo `.jsn` en la SD.
 ```cpp
-usersTable.addColumn("userId", "uint32", 4)
-          .addUniqueColumn("email", "string", 32)
+usersTable.addColumn("userId", TYPE_UINT32, offsetof(User, userId), sizeof(uint32_t))
+          .addUniqueColumn("email", TYPE_STRING, offsetof(User, email), sizeof(User::email))
           .saveSchema();
 
-ordersTable.addColumn("orderId", "uint32", 4)
-           .addForeignKey("userId", "uint32", 4, "users")
+ordersTable.addColumn("orderId", TYPE_UINT32, offsetof(Order, orderId), sizeof(uint32_t))
+           .addForeignKey("userId", TYPE_UINT32, offsetof(Order, userId), sizeof(uint32_t), "users", "id")
            .saveSchema();
 ```
 
@@ -81,6 +81,137 @@ ordersTable.addColumn("orderId", "uint32", 4)
 * **Inserts:** Primero inserta en la tabla padre antes de insertar registros hijos referenciados con `insertWithFK`.
 * **Consultas:** Utiliza `where`, `forEach`, o `db.innerJoin` en cualquier momento una vez las tablas estén abiertas.
 * **Borrado Relacional:** Usa `usersTable.removeRestrict(id, ordersTable, getFK)` o `usersTable.removeCascade(id, ordersTable, getFK)` según la lógica de negocio.
+
+---
+
+## Patrón DDL / Seed y Gestión de Metadatos (Buenas Prácticas)
+
+> [!IMPORTANT]
+> **¿Cuándo son necesarios los Metadatos (`.jsn`)?**
+> La definición y exportación de metadatos (`.addColumn()` y `.saveSchema()`) **SOLAMENTE es necesaria si vas a utilizar el software de escritorio MicroDB Studio** (o scripts externos en Python/C#/Web) para explorar, visualizar tablas, consultar datos y diagramar relaciones de forma gráfica.
+> 
+> Si tu proyecto es un sistema embebido autónomo (ej. registrador de sensores local, pantalla LCD, nodo IoT que envía datos por MQTT/Lora) y no necesitas conectarlo a **MicroDB Studio**, **NO es necesario definir metadatos**. El microcontrolador ejecutará todas las operaciones CRUD y relacionales de forma 100% nativa y ultra-ligera directamente con los structs de C++.
+
+En bases de datos relacionales tradicionales (como PostgreSQL o MySQL), la creación de tablas (**DDL**), los metadatos y la carga de datos maestros (**Seed Data**) se gestionan de forma estructurada. 
+
+Con **MicroDB** puedes implementar esta arquitectura de dos formas según los recursos de tu microcontrolador:
+
+---
+
+### Opción A: Auto-Generación en Tiempo de Ejecución (Recomendada para ESP32 / Mega / Uno con Flash libre)
+El microcontrolador verifica si el archivo `.jsn` ya existe en la tarjeta SD. Si no existe (primer encendido con una SD nueva), genera los metadatos automáticamente; en los siguientes reinicios simplemente continúa sin reescribir nada ni gastar ciclos de CPU.
+
+```cpp
+#include <SPI.h>
+#include <SD.h>
+#include <MicroDB.h>
+
+struct User {
+  char    name[20];
+  char    email[32];
+  uint8_t age;
+};
+
+MicroDB db;
+Table<User> usersTable;
+
+void setup() {
+  Serial.begin(9600);
+  db.begin("DB", 4);
+  usersTable = db.openTable<User>("users");
+
+  // Si el catálogo .jsn no existe en la SD, lo genera una sola vez (First Boot)
+  if (!SD.exists("DB/users.jsn")) {
+    usersTable
+      .addColumn("name",        TYPE_STRING, offsetof(User, name),  sizeof(User::name))
+      .addUniqueColumn("email", TYPE_STRING, offsetof(User, email), sizeof(User::email))
+      .addColumn("age",         TYPE_UINT8,  offsetof(User, age),   sizeof(uint8_t))
+      .saveSchema();
+  }
+
+  // Operaciones operativas directas:
+  User u = { "Carlos Perez", "carlos@correo.com", 28 };
+  usersTable.insert(u);
+}
+
+void loop() {}
+```
+
+---
+
+### Opción B: Separación en Dos Etapas (Máximo Ahorro de Flash para Arduino Uno)
+Ideal para microcontroladores pequeños donde la memoria de programa (Flash) está casi al límite. Se utiliza un sketch temporal de configuración para preparar la SD y luego se flashea el firmware definitivo de producción.
+
+#### 1. Sketch de Inicialización (DDL, Metadatos y Semillas):
+```cpp
+// Sketch 1: Ejecutar UNA SOLA VEZ para preparar la SD
+#include <MicroDB.h>
+
+struct Product {
+  char  name[20];
+  float price;
+};
+
+MicroDB db;
+Table<Product> prodTable;
+
+void setup() {
+  db.begin("STORE", 4);
+  prodTable = db.openTable<Product>("products");
+
+  // 1. Exportar metadatos para el software en PC
+  prodTable
+    .addColumn("name",  TYPE_STRING, offsetof(Product, name),  sizeof(Product::name))
+    .addColumn("price", TYPE_FLOAT,  offsetof(Product, price), sizeof(float))
+    .saveSchema();
+
+  // 2. Sembrar datos maestros de catálogo (Seed Data)
+  Product p1 = { "Arduino Uno", 22.50f };
+  Product p2 = { "Sensor DHT22", 4.80f };
+  prodTable.insert(p1);
+  prodTable.insert(p2);
+}
+
+void loop() {}
+```
+
+#### 2. Sketch de Producción (Firmware Final Ultra-Ligero):
+```cpp
+// Sketch 2: Firmware final de producción (0 bytes de sobrecarga en Flash y RAM)
+#include <MicroDB.h>
+
+struct Product {
+  char  name[20];
+  float price;
+};
+
+MicroDB db;
+Table<Product> prodTable;
+
+void setup() {
+  db.begin("STORE", 4);
+  prodTable = db.openTable<Product>("products");
+
+  // Lee, inserta y consulta directamente sin gastar memoria en definiciones de columnas
+  Product p;
+  if (prodTable.getById(1, p)) {
+    Serial.println(p.name);
+  }
+}
+
+void loop() {}
+```
+
+---
+
+### Resumen Comparativo de Opciones:
+
+| Criterio | Opción A (Tiempo de Ejecución con `if (!SD.exists)`) | Opción B (Separación en 2 Sketches) |
+| :--- | :--- | :--- |
+| **Gasto de RAM en Producción** | **0 bytes** (No consume memoria permanente) | **0 bytes** |
+| **Gasto de Memoria Flash (ROM)** | Ocupa $\approx$ 1 KB para las cadenas del JSON | **0 bytes** de Flash en el firmware final |
+| **Mantenimiento** | **Automático:** Un solo sketch gestiona todo | Requiere cargar el sketch de setup si cambias de SD |
+| **Recomendado para** | ESP32, STM32, Arduino Mega o Uno con espacio Flash libre | Proyectos grandes en Arduino Uno al 90%+ de Flash |
 
 ---
 
@@ -124,7 +255,6 @@ Las tarjetas SD en microcontroladores utilizan el sistema de archivos **FAT 8.3*
    * *Nota de seguridad:* Si se ingresa un nombre con más de 8 caracteres (ej. `"telemetry"`), el motor lo trunca automáticamente a 8 caracteres (`"telemetr"`) para garantizar la compatibilidad con el driver FAT.
 3. **Extensiones de Archivos Generadas en la SD:**
    * Archivo binario de registros: `.tbl` (ej. `users.tbl`)
-   * Esquema binario: `.sch` (ej. `users.sch`)
    * Metadatos JSON universales: `.jsn` (ej. `users.jsn`, extensión de 3 letras compatible con FAT 8.3)
    * Índices secundarios: `.idx` (ej. `email.idx`)
 
@@ -187,4 +317,5 @@ Cada ejemplo utiliza su propia carpeta en la SD para que puedas ejecutarlos todo
 * **Autor:** [Jairo Antonio Rohatan Zapata](https://github.com/Jairo2020)
 * **Repositorio Oficial:** [Library-Arduino/MicroDB](https://github.com/Library-Arduino/MicroDB.git)
 * **Licencia:** MIT License (Código abierto para uso personal, comercial y educativo).
+
 

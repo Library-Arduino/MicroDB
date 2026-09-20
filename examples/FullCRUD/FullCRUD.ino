@@ -64,7 +64,7 @@ void setup() {
     .addColumn("price",       TYPE_FLOAT,  offsetof(ProductItem, price),       sizeof(float))
     .addColumn("stock",       TYPE_UINT16, offsetof(ProductItem, stock),       sizeof(uint16_t))
     .addColumn("isAvailable", TYPE_BOOL,   offsetof(ProductItem, isAvailable), sizeof(bool));
-  inventory.saveSchema(); // Genera DB_CRUD/inv_crud.jsn y .sch
+  inventory.saveSchema(); // Genera DB_CRUD/inv_crud.jsn en la SD
 
   // Limpiar datos previos para ejecutar la demostración desde cero
   inventory.truncate();

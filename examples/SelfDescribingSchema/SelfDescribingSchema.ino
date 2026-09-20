@@ -7,9 +7,9 @@
   
   En este ejemplo aprenderás cómo hacer que la base de datos sea AUTO-DESCRIPTIVA:
   1. Define las columnas de tu struct con nombres, tipos y desplazamientos.
-  2. Guarda el catálogo de metadatos en la SD (.jsn y .sch).
+  2. Guarda el catálogo de metadatos en la SD (.jsn).
   3. Cualquier software externo (escrito en Python, C#, Electron, Node.js, etc.)
-     podrá abrir la SD, leer el archivo JSN/SCH y renderizar una tabla completa
+     podrá abrir la SD, leer el archivo JSN y renderizar una tabla completa
      con encabezados y datos automáticamente, sin tener que adivinar las columnas.
   =============================================================================
 */
@@ -65,9 +65,9 @@ void setup() {
     .addColumn("salary",        TYPE_FLOAT,  offsetof(Employee, salary),        sizeof(float))
     .addColumn("joinTimestamp", TYPE_UINT32, offsetof(Employee, joinTimestamp), sizeof(uint32_t));
 
-  // 2. Guardar el catálogo de metadatos en la SD (Genera DB_SCHEM/employees.jsn y DB_SCHEM/employees.sch)
+  // 2. Guardar el catálogo de metadatos en la SD (Genera DB_SCHEM/employee.jsn)
   employeesTable.saveSchema();
-  Serial.println(F("--> Archivo de Metadatos 'DB_SCHEM/employees.jsn' y 'DB_SCHEM/employees.sch' guardados en SD!"));
+  Serial.println(F("--> Archivo de Metadatos 'DB_SCHEM/employee.jsn' guardado en SD!"));
 
   // 3. Imprimir el esquema auto-descubierto en el puerto Serial
   Serial.println(F("\n[2] Esquema de la tabla descubierto:"));

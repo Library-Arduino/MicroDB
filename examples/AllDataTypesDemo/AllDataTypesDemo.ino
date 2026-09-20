@@ -108,7 +108,7 @@ void setup() {
     .addColumn("nodeName",         TYPE_STRING, offsetof(MasterRecord, nodeName),         sizeof(MasterRecord::nodeName))
     .addColumn("jsonConfig",       TYPE_STRING, offsetof(MasterRecord, jsonConfig),       sizeof(MasterRecord::jsonConfig))
     .addColumn("mediaPath",        TYPE_STRING, offsetof(MasterRecord, mediaFilePath),    sizeof(MasterRecord::mediaFilePath));
-  masterTable.saveSchema(); // Genera DB_TYPES/alldata.jsn y .sch en la SD
+  masterTable.saveSchema(); // Genera DB_TYPES/alldata.jsn en la SD
 
   // Limpiar para ejecutar la demostración limpia
   masterTable.truncate();

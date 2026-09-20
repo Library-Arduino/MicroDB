@@ -94,28 +94,6 @@ public:
         return true;
     }
 
-    // Guarda el esquema binario (.sch) en formato FAT 8.3
-    bool saveBinarySchema(const char* dirPath) {
-        char schPath[MICRODB_PATH_LEN];
-        snprintf(schPath, sizeof(schPath), "%s/%s.sch", dirPath, tableName);
-
-        if (SD.exists(schPath)) {
-            SD.remove(schPath);
-        }
-
-        File file = SD.open(schPath, MICRODB_FILE_RW);
-        if (!file) return false;
-
-        file.seek(0);
-        file.write((const uint8_t*)&columnCount, sizeof(columnCount));
-        for (uint8_t i = 0; i < columnCount; i++) {
-            file.write((const uint8_t*)&columns[i], sizeof(ColumnMetadata));
-        }
-        file.flush();
-        file.close();
-        return true;
-    }
-
     // Genera el archivo de Metadatos JSON (.jsn formato FAT 8.3) en la SD
     // Incluye columnas, tipos, offsets, unicidad (UNIQUE) y relaciones (FOREIGN KEYS)
     bool exportJsonSchema(const char* dirPath) {

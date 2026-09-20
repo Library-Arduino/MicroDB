@@ -175,9 +175,7 @@ public:
 
     bool saveSchema() {
         if (!checkIsOpen("saveSchema")) return false;
-        bool b1 = schema.saveBinarySchema(dirPathStored);
-        bool b2 = schema.exportJsonSchema(dirPathStored);
-        return b1 && b2;
+        return schema.exportJsonSchema(dirPathStored);
     }
 
     void printSchema() {
