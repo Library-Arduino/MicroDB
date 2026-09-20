@@ -1,1 +1,30 @@
-.vscode
+# Compilación y Binarios de Arduino / C++
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.hex
+*.elf
+*.bin
+*.eep
+*.lst
+
+# Salidas de compilación de Arduino IDE y PlatformIO
+build/
+output/
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# IDEs y Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos del Sistema Operativo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
