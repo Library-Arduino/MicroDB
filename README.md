@@ -215,6 +215,363 @@ void loop() {}
 
 ---
 
+## Referencia Completa de la API y Casos de Uso
+
+A continuación se detallan todos los métodos disponibles en **MicroDB** con ejemplos prácticos para programar:
+
+### Estructuras de Ejemplo (Structs)
+```cpp
+#include <MicroDB.h>
+
+// Tabla Padre
+struct Category {
+    char name[16];
+    char code[8];
+};
+
+// Tabla Hija
+struct Product {
+    uint32_t categoryId; // Clave Foránea (FK)
+    char sku[12];        // Campo Único
+    char name[24];
+    float price;
+    int16_t stock;
+};
+
+MicroDB db;
+Table<Category> tblCategories;
+Table<Product> tblProducts;
+```
+
+---
+
+### 1. Inicialización y Motor (`MicroDB`)
+
+#### `db.begin(dirPath, csPin)`
+Inicializa el bus SPI, monta la tarjeta SD y asegura el directorio donde se almacenarán las tablas (por defecto `"DB"`, CS pin `4`).
+```cpp
+if (!db.begin("MI_BD", 4)) {
+    Serial.println(F("Error al montar la tarjeta SD"));
+    while (1);
+}
+```
+
+#### `db.openTable<T>("nombre")`
+Abre una tabla existente o crea el archivo binario `.tbl` si no existe.
+```cpp
+tblCategories = db.openTable<Category>("cats");
+tblProducts   = db.openTable<Product>("prods");
+```
+
+#### `db.openIndex("nombre")`
+Abre o crea un archivo de índice binario secundario `.idx`.
+```cpp
+MicroDB_Index idxSku = db.openIndex("prod_sku");
+```
+
+#### `db.innerJoin(parentTable, childTable, getFK, onMatch)`
+Cruza dos tablas relacionadas por clave foránea en streaming sin desbordar la memoria RAM.
+```cpp
+db.innerJoin(tblCategories, tblProducts, 
+    [](const Product& prod) { return prod.categoryId; }, // Extractor de FK
+    [](const Category& cat, uint32_t prodId, const Product& prod) {
+        Serial.printf("[%s] -> %s ($%.2f)\n", cat.name, prod.name, prod.price);
+    }
+);
+```
+
+#### `db.printMemoryDiagnostics(tag)` y `db.getFreeRam()`
+Monitorea el uso de memoria RAM libre para prevenir desbordamientos de pila (*Stack Overflow*).
+```cpp
+db.printMemoryDiagnostics("Setup");
+Serial.printf("RAM Libre: %u bytes\n", db.getFreeRam());
+```
+
+#### `db.isReady()` y `db.getPath()`
+Verifica si el motor está listo y obtiene la ruta de la base de datos.
+```cpp
+if (db.isReady()) {
+    Serial.printf("Base de datos activa en: /%s\n", db.getPath());
+}
+```
+
+---
+
+### 2. Definición de Esquema y Metadatos (Schema Reflection)
+
+Permite que herramientas como **MicroDB Studio** descubran automáticamente todas las columnas y relaciones de tus tablas.
+
+#### `addColumn(...)`, `addUniqueColumn(...)` y `addForeignKey(...)`
+```cpp
+tblProducts
+    .addForeignKey("catId", TYPE_UINT32, offsetof(Product, categoryId), sizeof(uint32_t), "cats", "id")
+    .addUniqueColumn("sku", TYPE_STRING, offsetof(Product, sku), sizeof(Product::sku))
+    .addColumn("name", TYPE_STRING, offsetof(Product, name), sizeof(Product::name))
+    .addColumn("price", TYPE_FLOAT, offsetof(Product, price), sizeof(float))
+    .addColumn("stock", TYPE_INT16, offsetof(Product, stock), sizeof(int16_t));
+```
+
+#### `tbl.saveSchema()`
+Exporta el esquema en formato JSON universal FAT 8.3 (`prods.jsn`) en la SD.
+```cpp
+tblProducts.saveSchema();
+```
+
+#### `tbl.printSchema()`
+Imprime la estructura de las columnas por el monitor Serial.
+```cpp
+tblProducts.printSchema();
+```
+
+---
+
+### 3. Operaciones CRUD Básicas O(1)
+
+#### `tbl.insert(record)`
+Inserta un registro reutilizando automáticamente slots borrados (*Free-List O(1)*) o expandiendo al final. Retorna el ID autoincremental asignado (o `0` si falla).
+```cpp
+Product p = { 1, "SKU-001", "Sensor DHT22", 4.50f, 100 };
+uint32_t id = tblProducts.insert(p);
+Serial.printf("Producto guardado con ID #%u\n", id);
+```
+
+#### `tbl.getById(id, outRecord)`
+Recuperación directa O(1) por ID sin consumir RAM adicional.
+```cpp
+Product p;
+if (tblProducts.getById(1, p)) {
+    Serial.printf("Encontrado: %s - Precio: $%.2f\n", p.name, p.price);
+}
+```
+
+#### `tbl.getBySlot(slotIndex, outRecord, outRecordId)`
+Lectura física directa de un slot del archivo (ideal para paginación).
+```cpp
+Product p;
+uint32_t recordId;
+if (tblProducts.getBySlot(0, p, recordId)) {
+    Serial.printf("Slot 0 -> ID #%u: %s\n", recordId, p.name);
+}
+```
+
+#### `tbl.update(id, updatedRecord)`
+Sobrescribe *in-place* el registro en disco sin reescribir el resto del archivo.
+```cpp
+Product p;
+if (tblProducts.getById(1, p)) {
+    p.price = 5.25f; // Actualizar precio
+    tblProducts.update(1, p);
+}
+```
+
+#### `tbl.remove(id)`
+Borrado lógico O(1). Marca el slot como libre para que futuros `insert` lo reutilicen sin fragmentar la SD.
+```cpp
+if (tblProducts.remove(1)) {
+    Serial.println(F("Registro eliminado"));
+}
+```
+
+---
+
+### 4. Inserción Rápida por Lotes (Bulk Insert)
+
+Para registrar miles de datos rápidamente (telemetría, dataloggers) manteniendo el archivo abierto y sincronizando cada 100 registros.
+
+#### `beginBulk()`, `insertBulk()`, `insertBulkWithFK()` y `endBulk()`
+```cpp
+tblProducts.beginBulk(); // Mantiene el archivo abierto en modo de alta velocidad
+
+for (int i = 0; i < 500; i++) {
+    Product p;
+    p.categoryId = 1;
+    snprintf(p.sku, sizeof(p.sku), "SKU-%04d", i);
+    snprintf(p.name, sizeof(p.name), "Item #%d", i);
+    p.price = 10.0f + i;
+    p.stock = 50;
+
+    tblProducts.insertBulk(p); // Hasta 10x más rápido que insert() individual
+}
+
+tblProducts.endBulk(); // Cierra y asegura la cabecera en la SD
+```
+
+---
+
+### 5. Restricciones de Unicidad y Upsert
+
+Evitan registros duplicados de forma nativa sin requerir bases de datos pesadas.
+
+#### `insertUnique(record, keyExtractor)` / `insertUniqueString(record, strExtractor)`
+Inserta solo si el valor no existe previamente en la tabla; de lo contrario, rechaza la operación.
+```cpp
+Product p = { 1, "SKU-999", "Tester", 1.0f, 10 };
+
+uint32_t id = tblProducts.insertUniqueString(p, [](const Product& item) {
+    return item.sku;
+});
+if (id == 0) {
+    Serial.println(F("El SKU ya existe en la base de datos"));
+}
+```
+
+#### `upsertUnique(...)` / `upsertUniqueString(...)`
+Si el registro existe lo **actualiza** (`UPDATE`); si no existe, lo **inserta** (`INSERT`).
+```cpp
+Product p = { 1, "SKU-999", "Tester v2", 2.5f, 20 };
+
+// Si SKU-999 ya existe, actualiza su precio y nombre; si no, lo inserta
+uint32_t id = tblProducts.upsertUniqueString(p, [](const Product& item) {
+    return item.sku;
+});
+```
+
+---
+
+### 6. Integridad Referencial y Validaciones (CHECK y FK)
+
+#### `insertIf(record, validator)` y `updateIf(id, record, validator)` (Restricciones CHECK)
+Permite validar reglas de negocio antes de tocar el disco con cero sobrecarga de RAM.
+```cpp
+Product p = { 1, "SKU-050", "Chip", -5.0f, 10 }; // Precio negativo inválido
+
+uint32_t id = tblProducts.insertIf(p, [](const Product& item) {
+    return item.price > 0.0f && item.stock >= 0; // Regla de validación
+});
+// Será rechazado porque price < 0
+```
+
+#### `insertWithFK(record, parentTable, foreignKeyId)`
+Garantiza que la categoría padre exista antes de registrar el producto dependiente.
+```cpp
+Product p = { 99, "SKU-100", "Relay", 3.0f, 5 }; // Categoría 99 no existe
+
+uint32_t id = tblProducts.insertWithFK(p, tblCategories, p.categoryId);
+if (id == 0) {
+    Serial.println(F("Error: No se puede insertar porque la categoría #99 no existe"));
+}
+```
+
+#### `removeRestrict(parentId, childTable, getFK)`
+Impide borrar una fila padre si tiene registros hijos dependientes (comportamiento SQL `ON DELETE RESTRICT`).
+```cpp
+// Intenta borrar la Categoría #1 solo si no tiene productos asociados
+if (!tblCategories.removeRestrict(1, tblProducts, [](const Product& prod) { return prod.categoryId; })) {
+    Serial.println(F("No se puede eliminar la categoría: tiene productos asociados"));
+}
+```
+
+#### `removeCascade(parentId, childTable, getFK)`
+Elimina la fila padre y automáticamente todos los registros hijos relacionados (comportamiento SQL `ON DELETE CASCADE`).
+```cpp
+uint32_t eliminados = tblCategories.removeCascade(1, tblProducts, [](const Product& prod) { return prod.categoryId; });
+Serial.printf("Categoría eliminada junto con %u productos hijos.\n", eliminados);
+```
+
+---
+
+### 7. Consultas y Cursors Streaming O(1) RAM
+
+Todos los recorridos de MicroDB leen registro por registro desde la SD, manteniendo el consumo de memoria RAM constante (solo los bytes de 1 registro), sin importar si la tabla tiene 10 o 100,000 registros.
+
+#### `forEach(callback)`
+Recorre todos los registros activos.
+```cpp
+tblProducts.forEach([](uint32_t id, const Product& p) {
+    Serial.printf("#%u | %s | $%.2f | Stock: %d\n", id, p.name, p.price, p.stock);
+});
+```
+
+#### `where(predicate, callback)`
+Filtra filas con cualquier condición lógica (equivalente a `SELECT * WHERE ...`).
+```cpp
+tblProducts.where(
+    [](uint32_t id, const Product& p) { return p.stock < 10; },
+    [](uint32_t id, const Product& p) {
+        Serial.printf("ALERTA: %s tiene bajo stock (%d unidades)\n", p.name, p.stock);
+    }
+);
+```
+
+#### `countWhere(predicate)`
+Cuenta cuántos registros cumplen una condición (equivalente a `SELECT COUNT(*) WHERE ...`).
+```cpp
+uint32_t caros = tblProducts.countWhere([](uint32_t id, const Product& p) {
+    return p.price > 100.0f;
+});
+Serial.printf("Total de productos de más de $100: %u\n", caros);
+```
+
+#### `findFirst(predicate, outRecord, outRecordId)`
+Busca y se detiene en el primer elemento que cumpla el criterio (ideal para búsquedas puntuales).
+```cpp
+Product p;
+uint32_t foundId;
+if (tblProducts.findFirst([](uint32_t id, const Product& item) {
+    return strcmp(item.sku, "SKU-001") == 0;
+}, p, foundId)) {
+    Serial.printf("Encontrado ID #%u: %s\n", foundId, p.name);
+}
+```
+
+---
+
+### 8. Mantenimiento de Tablas
+
+#### `tbl.vacuum()`
+Compacta la base de datos eliminando físicamente los huecos dejados por registros borrados y reordenando el archivo.
+```cpp
+if (tblProducts.deletedCount() > 50) {
+    Serial.println(F("Compactando tabla..."));
+    tblProducts.vacuum();
+}
+```
+
+#### `tbl.truncate()`
+Elimina todos los datos de la tabla instantáneamente y resetea los contadores.
+```cpp
+tblProducts.truncate();
+```
+
+#### Propiedades Informativas
+```cpp
+Serial.printf("Tabla: %s\n", tblProducts.getName());
+Serial.printf("Activos: %u\n", tblProducts.count());
+Serial.printf("Borrados: %u\n", tblProducts.deletedCount());
+Serial.printf("Slots totales: %u\n", tblProducts.totalSlots());
+Serial.printf("Abierta: %s\n", tblProducts.isTableOpen() ? "SI" : "NO");
+```
+
+---
+
+### 9. Índices Secundarios (`MicroDB_Index`)
+
+Acelera consultas repetitivas de $O(N)$ a búsqueda binaria en disco $O(\log N)$ sin cargar el índice completo a RAM.
+
+```cpp
+// 1. Abrir o crear índice
+MicroDB_Index idxSku = db.openIndex("prod_sku");
+
+// 2. Indexar al insertar
+Product p = { 1, "SKU-ABC", "Sensor CO2", 15.0f, 10 };
+uint32_t id = tblProducts.insert(p);
+
+uint32_t keyHash = MicroDB_Index::hashString(p.sku); // Hash FNV-1a de 32 bits
+idxSku.insert(keyHash, id, id - 1);
+
+// 3. Buscar usando el índice
+uint32_t targetHash = MicroDB_Index::hashString("SKU-ABC");
+uint32_t foundId, foundSlot;
+
+if (idxSku.findFirst(targetHash, foundId, foundSlot)) {
+    Product found;
+    tblProducts.getById(foundId, found);
+    Serial.printf("Producto encontrado vía Índice: %s\n", found.name);
+}
+```
+
+---
+
 ## Detección Automática de Errores de Secuencia
 
 Si ejecutas una operación fuera de orden (por ejemplo, intentar insertar antes de inicializar la base de datos o abrir la tabla), **MicroDB** cancela la operación de forma segura y emite una alerta diagnóstica por el puerto Serial:
