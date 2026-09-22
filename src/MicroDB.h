@@ -2,8 +2,13 @@
 #define MICRODB_H
 
 #include <Arduino.h>
+#include <stddef.h>
 #include <SPI.h>
 #include <SD.h>
+
+#ifndef offsetof
+    #define offsetof(type, member) __builtin_offsetof(type, member)
+#endif
 
 #include "MicroDB_Config.h"
 #include "MicroDB_Types.h"

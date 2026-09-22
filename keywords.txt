@@ -54,6 +54,15 @@ isTableOpen	KEYWORD2
 hashString	KEYWORD2
 printMemoryDiagnostics	KEYWORD2
 getFreeRam	KEYWORD2
+beginBulk	KEYWORD2
+insertBulk	KEYWORD2
+insertBulkWithFK	KEYWORD2
+endBulk	KEYWORD2
+addColumn	KEYWORD2
+addUniqueColumn	KEYWORD2
+addForeignKey	KEYWORD2
+saveSchema	KEYWORD2
+printSchema	KEYWORD2
 
 #######################################
 # Constants and Literals (LITERAL1)

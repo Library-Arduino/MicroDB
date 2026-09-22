@@ -17,6 +17,8 @@ private:
     char dirPathStored[MICRODB_NAME_LEN + 2];
     TableHeader header;
     bool isOpen;
+    File bulkFile;
+    bool isBulkActive;
     size_t slotTotalSize; // sizeof(SlotHeader) + sizeof(T)
     TableSchema schema;
 
@@ -50,7 +52,7 @@ private:
     }
 
 public:
-    Table() : isOpen(false), slotTotalSize(sizeof(SlotHeader) + sizeof(T)) {
+    Table() : isOpen(false), isBulkActive(false), slotTotalSize(sizeof(SlotHeader) + sizeof(T)) {
         tableName[0] = '\0';
         tableFilePath[0] = '\0';
         dirPathStored[0] = '\0';
@@ -228,6 +230,74 @@ public:
         file.close();
 
         return assignedId;
+    }
+
+    // =========================================================================
+    // INSERCIÓN RÁPIDA POR LOTES (BULK INSERT) PARA GRANDES VOLÚMENES
+    // =========================================================================
+
+    bool beginBulk() {
+        if (!checkIsOpen("beginBulk")) return false;
+        if (isBulkActive) return true;
+        bulkFile = SD.open(tableFilePath, MICRODB_FILE_RW);
+        if (!bulkFile) return false;
+        bulkFile.seek(getSlotOffset(header.totalSlots));
+        isBulkActive = true;
+        return true;
+    }
+
+    uint32_t insertBulk(const T& record) {
+        if (!isBulkActive || !bulkFile) {
+            return insert(record);
+        }
+
+        uint32_t assignedId = header.nextAutoId++;
+        uint32_t targetSlot = header.totalSlots++;
+
+        SlotHeader slotHeader;
+        slotHeader.status = RECORD_ACTIVE;
+        slotHeader.recordId = assignedId;
+        slotHeader.nextFreeSlot = MICRODB_NULL_OFFSET;
+
+        bulkFile.write((const uint8_t*)&slotHeader, sizeof(SlotHeader));
+        bulkFile.write((const uint8_t*)&record, sizeof(T));
+        header.activeRecords++;
+
+        // Sincronizar periódicamente cada 100 registros para proteger ante cortes
+        if ((assignedId % 100) == 0) {
+            flushHeader(bulkFile);
+            bulkFile.seek(getSlotOffset(header.totalSlots));
+        }
+
+        return assignedId;
+    }
+
+    template <typename TParent>
+    uint32_t insertBulkWithFK(const T& record, Table<TParent>& parentTable, uint32_t foreignKeyId) {
+        if (!checkIsOpen("insertBulkWithFK")) return 0;
+        if (!parentTable.isTableOpen()) return 0;
+
+        TParent dummyParent;
+        if (!parentTable.getById(foreignKeyId, dummyParent)) {
+            #if MICRODB_ENABLE_DIAGNOSTICS
+            Serial.print(F("[MicroDB FK ERROR] Violacion FK bulk en '"));
+            Serial.print(tableName);
+            Serial.print(F("': ID padre #"));
+            Serial.print(foreignKeyId);
+            Serial.println(F(" no existe."));
+            #endif
+            return 0;
+        }
+        return insertBulk(record);
+    }
+
+    bool endBulk() {
+        if (!isBulkActive) return true;
+        bool ok = flushHeader(bulkFile);
+        bulkFile.flush();
+        bulkFile.close();
+        isBulkActive = false;
+        return ok;
     }
 
     // =========================================================================
@@ -519,12 +589,34 @@ public:
     }
 
     bool getById(uint32_t recordId, T& outRecord, uint32_t* outSlotIndex = nullptr) {
-        if (!checkIsOpen("getById") || header.activeRecords == 0) return false;
+        if (!checkIsOpen("getById") || header.activeRecords == 0 || recordId == 0) return false;
+
+        if (isBulkActive && bulkFile) {
+            flushHeader(bulkFile);
+            bulkFile.seek(getSlotOffset(header.totalSlots));
+        }
 
         File file = SD.open(tableFilePath, FILE_READ);
         if (!file) return false;
 
         SlotHeader slotHeader;
+
+        // [Optimizacion O(1) Directa]: En inserciones secuenciales, el slot es recordId - 1
+        if (recordId <= header.totalSlots) {
+            uint32_t fastSlot = recordId - 1;
+            file.seek(getSlotOffset(fastSlot));
+            if (file.read((uint8_t*)&slotHeader, sizeof(SlotHeader)) == sizeof(SlotHeader)) {
+                if (slotHeader.status == RECORD_ACTIVE && slotHeader.recordId == recordId) {
+                    if (file.read((uint8_t*)&outRecord, sizeof(T)) == sizeof(T)) {
+                        if (outSlotIndex) *outSlotIndex = fastSlot;
+                        file.close();
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Fallback: Escaneo secuencial para tablas con huecos o registros reubicados
         for (uint32_t slot = 0; slot < header.totalSlots; slot++) {
             file.seek(getSlotOffset(slot));
             if (file.read((uint8_t*)&slotHeader, sizeof(SlotHeader)) != sizeof(SlotHeader)) break;
@@ -681,6 +773,7 @@ public:
 
     bool truncate() {
         if (!checkIsOpen("truncate")) return false;
+        if (isBulkActive) endBulk();
         SD.remove(tableFilePath);
         isOpen = false;
         
