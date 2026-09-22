@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💻 MicroDB Studio (Software de Escritorio para Windows)
+    url: https://github.com/adazix/MicroDB-Studio
+    about: Si necesitas inspeccionar tus bases de datos visualmente, usar la consola SQL o conectar con DBeaver, descarga MicroDB Studio.
+  - name: 📖 Ejemplos de la Librería
+    url: https://github.com/Library-Arduino/MicroDB/tree/main/examples
+    about: Consulta sketches listos para usar de inserción, consultas, claves foráneas y relaciones.
