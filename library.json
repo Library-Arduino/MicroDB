@@ -1,0 +1,38 @@
+{
+  "name": "MicroDB",
+  "version": "1.0.0",
+  "description": "High-performance embedded Relational Database Management System (DBMS) for SD cards.",
+  "keywords": [
+    "database",
+    "dbms",
+    "sd-card",
+    "storage",
+    "relational",
+    "indexing",
+    "esp32",
+    "arduino"
+  ],
+  "authors": [
+    {
+      "name": "Jairo Antonio Rohatan Zapata",
+      "url": "https://github.com/Jairo2020",
+      "maintainer": true
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Library-Arduino/MicroDB.git"
+  },
+  "homepage": "https://github.com/Library-Arduino/MicroDB",
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": [
+    "espressif32",
+    "espressif8266",
+    "atmelavr",
+    "atmelsam",
+    "ststm32",
+    "raspberrypi"
+  ],
+  "examples": "examples/*/*.ino"
+}
