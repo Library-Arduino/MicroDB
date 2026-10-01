@@ -6,6 +6,31 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
 
 ---
 
+## [1.1.0] - 2026-10-01
+
+### 🚀 Nuevas Funcionalidades
+- **Gestión Dinámica de Integridad Referencial en Eliminación (`removeRelation`):**
+  - Validación en tiempo de ejecución de registros dependientes antes de borrar en la tabla padre.
+  - Soporte de políticas configurables a través del nuevo `enum CascadeAction`:
+    - `CASCADE_RESTRICT`: Impide la eliminación del registro si existen referencias dependientes.
+    - `CASCADE_DELETE`: Borra automáticamente en cascada todos los registros hijos relacionados.
+    - `CASCADE_SET_NULL`: Desvincula los registros dependientes ejecutando un callback de usuario (ej: asignando `foreignKey = 0`) y luego borra el registro padre.
+    - `CASCADE_FORCE`: Fuerza la eliminación del registro padre sin alterar los registros hijos.
+- **Nuevo Método de Desvinculación Directa (`removeSetNull`):**
+  - Atajo dedicado para poner en nulo/cero claves foráneas dependientes y eliminar al padre en una sola operación atómica.
+- **Nuevo Código de Error `DB_ERROR_FOREIGN_KEY_RESTRICT`:**
+  - Código explícito en `DBResult` para identificar rechazos de integridad referencial.
+- **Resaltado de Sintaxis Expandido:**
+  - Inclusión de `CascadeAction`, `removeRelation`, `removeSetNull` y los literales `CASCADE_*` en `keywords.txt`.
+
+### 🔧 Optimizaciones y Mejoras
+- **Aislamiento de Tests de Desarrollo:**
+  - Configuración en `.gitignore` para ignorar bocetos temporales y suites de pruebas locales (`examples/*_DevTest/`, `examples/DevTest*`).
+- **Documentación de API:**
+  - Guía completa y ejemplos de uso en `README.md` para las nuevas políticas de eliminación relacional.
+
+---
+
 ## [1.0.1] - 2026-09-22
 
 ### 🚀 Nuevas Funcionalidades

@@ -28,3 +28,9 @@ output/
 Thumbs.db
 ehthumbs.db
 [Dd]esktop.ini
+
+# Ejemplos y pruebas de desarrollo local (no incluidos en Git)
+examples/*_DevTest/
+examples/DevTest*
+examples/dev_*
+*.test.ino

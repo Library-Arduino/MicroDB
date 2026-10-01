@@ -491,6 +491,99 @@ public:
         return deletedChildren;
     }
 
+    // Pone en NULL/cero la clave foránea de los registros hijos y elimina el registro padre
+    template <typename TChild, typename KeyExtractor, typename NullSetter>
+    uint32_t removeSetNull(uint32_t parentId, Table<TChild>& childTable, KeyExtractor getForeignKey, NullSetter setNullField) {
+        if (!checkIsOpen("removeSetNull")) return 0;
+        uint32_t updatedChildren = 0;
+        childTable.forEach([&](uint32_t childId, const TChild& child) {
+            if (getForeignKey(child) == parentId) {
+                TChild childCopy = child;
+                setNullField(childCopy);
+                childTable.update(childId, childCopy);
+                updatedChildren++;
+            }
+        });
+        remove(parentId);
+        return updatedChildren;
+    }
+
+    // Método unificado para eliminar un registro con política configurable de integridad referencial
+    template <typename TChild, typename KeyExtractor, typename NullSetter = void*>
+    bool removeRelation(uint32_t parentId, Table<TChild>& childTable, KeyExtractor getForeignKey, CascadeAction action = CASCADE_RESTRICT, NullSetter setNullField = nullptr) {
+        if (!checkIsOpen("removeRelation")) return false;
+
+        // Comprobar en tiempo de ejecución si existen relaciones activas
+        uint32_t childCount = 0;
+        childTable.forEach([&](uint32_t childId, const TChild& child) {
+            if (getForeignKey(child) == parentId) {
+                childCount++;
+            }
+        });
+
+        // Si no tiene hijos dependientes, simplemente se elimina
+        if (childCount == 0) {
+            return remove(parentId);
+        }
+
+        // Si tiene hijos dependientes, ejecutar la acción elegida por el usuario
+        switch (action) {
+            case CASCADE_RESTRICT: {
+                #if MICRODB_ENABLE_DIAGNOSTICS
+                Serial.print(F("[MicroDB RESTRICT] No se puede eliminar ID #"));
+                Serial.print(parentId);
+                Serial.print(F(" de '"));
+                Serial.print(tableName);
+                Serial.print(F("': Hay "));
+                Serial.print(childCount);
+                Serial.println(F(" registros dependientes en tabla hija."));
+                #endif
+                return false;
+            }
+
+            case CASCADE_DELETE: {
+                childTable.forEach([&](uint32_t childId, const TChild& child) {
+                    if (getForeignKey(child) == parentId) {
+                        childTable.remove(childId);
+                    }
+                });
+                return remove(parentId);
+            }
+
+            case CASCADE_SET_NULL: {
+                childTable.forEach([&](uint32_t childId, const TChild& child) {
+                    if (getForeignKey(child) == parentId) {
+                        TChild childCopy = child;
+                        runSetNullHelper(childCopy, setNullField);
+                        childTable.update(childId, childCopy);
+                    }
+                });
+                return remove(parentId);
+            }
+
+            case CASCADE_FORCE: {
+                // Forzar borrado del padre sin tocar los hijos
+                return remove(parentId);
+            }
+
+            default:
+                return false;
+        }
+    }
+
+private:
+    // Helper auxiliar para ejecutar el setter de null de forma segura
+    template <typename TRecord, typename F>
+    void runSetNullHelper(TRecord& record, F setter) {
+        setter(record);
+    }
+    template <typename TRecord>
+    void runSetNullHelper(TRecord& record, void* setter) {
+        // No-op si no se proporcionó callback
+    }
+
+public:
+
     // =========================================================================
     // MANTENIMIENTO Y COMPACTACIÓN (VACUUM)
     // =========================================================================

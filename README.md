@@ -468,6 +468,38 @@ uint32_t eliminados = tblCategories.removeCascade(1, tblProducts, [](const Produ
 Serial.printf("Categoría eliminada junto con %u productos hijos.\n", eliminados);
 ```
 
+#### `removeSetNull(parentId, childTable, getFK, setNullCallback)`
+Desvincula los registros hijos dependientes asignándoles un valor nulo/cero a través del callback y luego elimina al padre (comportamiento SQL `ON DELETE SET NULL`).
+```cpp
+uint32_t desvinculados = tblCategories.removeSetNull(
+    1, 
+    tblProducts, 
+    [](const Product& prod) { return prod.categoryId; },
+    [](Product& prod) { prod.categoryId = 0; } // Pone el FK en 0 (NULL)
+);
+Serial.printf("Categoría eliminada y %u productos desvinculados.\n", desvinculados);
+```
+
+#### `removeRelation(parentId, childTable, getFK, action, setNullCallback)`
+Método unificado y configurable en tiempo de ejecución. Permite decidir dinámicamente qué hacer con los registros relacionados usando `CascadeAction`:
+- `CASCADE_RESTRICT`: Bloquea y aborta la eliminación si existen registros hijos dependientes.
+- `CASCADE_DELETE`: Borra en cascada todos los registros hijos.
+- `CASCADE_SET_NULL`: Aplica la función `setNullCallback` para desvincular los registros hijos y elimina al padre.
+- `CASCADE_FORCE`: Fuerza la eliminación del registro padre sin modificar a los hijos dependientes.
+
+```cpp
+// Ejemplo: Decidir en tiempo de ejecución
+CascadeAction accion = CASCADE_SET_NULL;
+
+bool ok = tblCategories.removeRelation(
+    1, 
+    tblProducts, 
+    [](const Product& prod) { return prod.categoryId; },
+    accion,
+    [](Product& prod) { prod.categoryId = 0; }
+);
+```
+
 ---
 
 ### 7. Consultas y Cursors Streaming O(1) RAM

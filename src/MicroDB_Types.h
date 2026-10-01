@@ -20,7 +20,16 @@ enum DBResult : uint8_t {
     DB_ERROR_INDEX_FULL,
     DB_ERROR_KEY_EXISTS,
     DB_ERROR_INVALID_PARAM,
-    DB_ERROR_IO
+    DB_ERROR_IO,
+    DB_ERROR_FOREIGN_KEY_RESTRICT
+};
+
+// Acciones de integridad referencial al eliminar o actualizar registros padres
+enum CascadeAction : uint8_t {
+    CASCADE_RESTRICT = 0, // Bloquea la eliminación si hay registros dependientes
+    CASCADE_DELETE   = 1, // Borra en cascada los registros relacionados
+    CASCADE_SET_NULL = 2, // Pone en NULL/0 el campo relacionado en los hijos
+    CASCADE_FORCE    = 3  // Fuerza el borrado del padre sin modificar los registros dependientes
 };
 
 // Operadores para consultas relacionales y filtros
